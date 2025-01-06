@@ -1,3 +1,5 @@
 ﻿/.venv
 /.idea
 
+/SecretKey.py
+response.json
