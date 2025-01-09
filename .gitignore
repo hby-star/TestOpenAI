@@ -2,4 +2,5 @@
 /.idea
 
 /SecretKey.py
-response.json
+/Response
+/__pycache__

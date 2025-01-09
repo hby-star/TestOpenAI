@@ -1,5 +1,8 @@
 import json
 import base64
+import requests
+import Utils
+from pydantic import BaseModel
 from openai import OpenAI
 from SecretKey import SecretKey
 
@@ -8,7 +11,9 @@ client = OpenAI(
 )
 
 # completion_choice = "text"
-completion_choice = "image&text"
+# completion_choice = "image&text"
+# completion_choice = "audio"
+completion_choice = "tools"
 
 """
 Text
@@ -23,22 +28,6 @@ if completion_choice == "text":
                 "content": "write a haiku about ai"
             }
         ],
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "email_schema",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "email": {
-                            "description": "The email address that appears in the input",
-                            "type": "string"
-                        },
-                        "additionalProperties": False
-                    }
-                }
-            }
-        }
     )
 
 
@@ -47,12 +36,9 @@ Image & Text
 """
 if completion_choice == "image&text":
     image_path = "./images/avatar.jpg"
-    def encode_image(_image_path):
-        with open(_image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
 
     # Getting the base64 string
-    base64_image = encode_image(image_path)
+    base64_image = Utils.encode_image(image_path)
 
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -74,8 +60,72 @@ if completion_choice == "image&text":
     )
 
 
-# Output
+"""
+Audio
+"""
+if completion_choice == "audio":
+    url = "https://openaiassets.blob.core.windows.net/$web/API/docs/audio/alloy.wav"
+    response = requests.get(url)
+    response.raise_for_status()
+    wav_data = response.content
+    encoded_string = base64.b64encode(wav_data).decode('utf-8')
+
+    completion = client.chat.completions.create(
+        model="gpt-4o-audio-preview",
+        modalities=["text", "audio"],
+        audio={"voice": "alloy", "format": "wav"},
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "What is in this recording?"
+                    },
+                    {
+                        "type": "input_audio",
+                        "input_audio": {
+                            "data": encoded_string,
+                            "format": "wav"
+                        }
+                    }
+                ]
+            },
+        ]
+    )
+
+"""
+Using tools
+"""
+if completion_choice == "tools":
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"}
+                    },
+                },
+            },
+        }
+    ]
+
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "What's the weather like in Shanghai today?"}],
+        tools=tools,
+    )
+
+"""
+Response
+"""
+
+
 if completion_choice:
+    print(completion)
     # Normalize the response
     normalized_response = {
         "id": completion.id,
@@ -88,9 +138,18 @@ if completion_choice:
                     "content": choice.message.content,
                     "refusal": choice.message.refusal,
                     "role": choice.message.role,
-                    "audio": choice.message.audio,
+                    "audio": Utils.serialize_audio(choice.message.audio) if choice.message.audio else None,
                     "function_call": choice.message.function_call,
-                    "tool_calls": choice.message.tool_calls
+                    "tool_calls": [
+                        {
+                            "id": tool_call.id,
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            },
+                            "type": tool_call.type,
+                        } for tool_call in choice.message.tool_calls
+                    ]
                 }
             } for choice in completion.choices
         ],
@@ -117,5 +176,5 @@ if completion_choice:
     }
 
     # Save the normalized response to response.json
-    with open('response.json', 'w') as f:
+    with open('Response/response.json', 'w') as f:
         json.dump(normalized_response, f, indent=4)
