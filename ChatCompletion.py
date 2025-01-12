@@ -1,34 +1,39 @@
 import json
 import base64
+import time
+
 import requests
 import Utils
 from pydantic import BaseModel
 from openai import OpenAI
-from SecretKey import SecretKey
+from SecretKey import OpenAIKey
 
 client = OpenAI(
-    api_key=SecretKey
+    api_key=OpenAIKey
 )
 
-# completion_choice = "text"
+chat_time = 0
+completion_choice = "text"
 # completion_choice = "image&text"
 # completion_choice = "audio"
-completion_choice = "tools"
+# completion_choice = "tools"
 
 """
 Text
 """
 if completion_choice == "text":
+    start_time = time.time()
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
-        store=True,
         messages=[
-            {
-                "role": "user",
-                "content": "write a haiku about ai"
-            }
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "Hello"},
         ],
+        stream=False
     )
+    end_time = time.time()
+    chat_time = end_time - start_time
+    print(f"Time taken: {end_time - start_time}")
 
 
 """
@@ -128,6 +133,7 @@ if completion_choice:
     print(completion)
     # Normalize the response
     normalized_response = {
+        "time": chat_time,
         "id": completion.id,
         "choices": [
             {
@@ -149,7 +155,7 @@ if completion_choice:
                             },
                             "type": tool_call.type,
                         } for tool_call in choice.message.tool_calls
-                    ]
+                    ] if choice.message.tool_calls else None
                 }
             } for choice in completion.choices
         ],
@@ -175,6 +181,6 @@ if completion_choice:
         }
     }
 
-    # Save the normalized response to response.json
-    with open('Response/response.json', 'w') as f:
+    # Save the normalized response
+    with open('Response/openai_response.json', 'w') as f:
         json.dump(normalized_response, f, indent=4)
